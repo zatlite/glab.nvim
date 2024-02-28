@@ -2,6 +2,7 @@ local pickers = require("telescope.pickers")
 local finders = require("telescope.finders")
 local conf = require("telescope.config").values
 local actions = require("telescope.actions")
+local utils = require("telescope.utils")
 local curl = require("plenary.curl")
 local Git = require("lazy.manage.git")
 local state = require("glab.state")
@@ -22,6 +23,24 @@ local get_project_path = function()
 		return string.match(url, ":(.-).git$")
 	end
 	return string.match(url, "[a-z]/(.-).git$")
+end
+
+M.browse = function()
+	local currentBranch, _ = utils.get_os_command_output({ "git", "branch", "--show-current" }, ".")
+	vim.cmd(
+		"!open "
+			.. state.GITLAB_URL
+			.. "/"
+			.. get_project_path()
+			.. "/-/blob/"
+			.. currentBranch[1]
+			.. "/"
+			.. vim.fn.expand("%:.")
+	)
+end
+
+M.browseMaster = function()
+	vim.cmd("!open " .. state.GITLAB_URL .. "/" .. get_project_path() .. "/-/blob/master/" .. vim.fn.expand("%:."))
 end
 
 M.checkout = function()
