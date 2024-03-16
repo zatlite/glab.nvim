@@ -2,6 +2,7 @@ local pickers = require("telescope.pickers")
 local finders = require("telescope.finders")
 local conf = require("telescope.config").values
 local actions = require("telescope.actions")
+local action_state = require("telescope.actions.state")
 local utils = require("telescope.utils")
 local curl = require("plenary.curl")
 local Git = require("lazy.manage.git")
@@ -101,6 +102,76 @@ M.checkout = function()
 				sorter = conf.generic_sorter(opts),
 				attach_mappings = function(prompt_bufnr, map)
 					actions.select_default:replace(actions.git_checkout)
+					return true
+				end,
+			})
+			:find()
+	end
+
+	-- to execute the function
+	branch_picker(require("telescope.themes").get_dropdown({}))
+end
+
+M.yank_merge_request = function()
+	local json = {
+		query = 'query { project(fullPath: "'
+			.. get_project_path()
+			.. '") { mergeRequests(state: opened) { nodes { reference title description webUrl diff: diffStatsSummary { files: fileCount added: additions deleted: deletions } }}}}',
+	}
+
+	local post_res = curl.post(state.GITLAB_URL .. "/api/graphql", {
+		accept = "application/json",
+		body = vim.fn.json_encode(json),
+		headers = {
+			content_type = "application/json",
+			authorization = "Bearer " .. state.GITLAB_TOKEN,
+		},
+	})
+
+	local nodes = vim.fn.json_decode(post_res.body).data.project.mergeRequests.nodes
+	local list = {}
+	for i, node in ipairs(nodes) do
+		table.insert(list, i, {
+			string.format("%s: %s", string.gsub(node.reference, "!", ""), node.title),
+			string.format(
+				"%s '%s' %s %s %s",
+				node.webUrl,
+				node.title,
+				node.diff.files,
+				node.diff.added,
+				node.diff.deleted
+			),
+		})
+	end
+
+	local branch_picker = function(opts)
+		opts = opts or {}
+		pickers
+			.new(opts, {
+				prompt_title = "Copy merge request summary",
+
+				finder = finders.new_table({
+					results = list,
+					entry_maker = function(entry)
+						return {
+							value = entry[2],
+							display = entry[1],
+							ordinal = entry[1],
+						}
+					end,
+				}),
+				sorter = conf.generic_sorter(opts),
+				attach_mappings = function(prompt_bufnr, map)
+					actions.select_default:replace(function()
+						actions.close(prompt_bufnr)
+						local selection = action_state.get_selected_entry()
+						-- print(vim.inspect(selection.value))
+						os.execute(
+							"~/repos/electron-clip/out/electron-clip-darwin-arm64/electron-clip.app/Contents/MacOS/electron-clip "
+								.. selection.value
+						)
+						-- vim.fn.setreg("+", "<h1>This is my test</h1>") -- NOTE: unfortunately no way to get html formatted data into clipboard with setreg
+					end)
 					return true
 				end,
 			})
